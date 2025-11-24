@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>نظام إدارة إيجارات وقف فاطمة هانم البقلية - 2025</title>
+
+<!-- خطوط -->
+<link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;900&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"/>
+
+<!-- Fuse.js للبحث -->
+<script src="https://cdn.jsdelivr.net/npm/fuse.js/dist/fuse.min.js"></script>
+<!-- PapaParse لقراءة CSV -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<!-- SheetJS لتصدير Excel -->
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+
+<style>
+:root {
+  --primary:#1e40af;
+  --primary-light:#3b82f6;
+  --success:#16a34a;
+  --warning:#ca8a04;
+  --danger:#dc2626;
+  --dark:#1e293b;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Cairo',sans-serif;background:linear-gradient(135deg,#dbeafe 0%,#bfdbfe 100%);min-height:100vh;color:#1f2937;}
+header{background:linear-gradient(to right,#1e3a8a,#3b82f6);color:white;padding:1.5rem;text-align:center;box-shadow:0 4px 20px rgba(0,0,0,0.2);}
+header h1{font-size:2rem;margin-bottom:0.5rem;}
+.container{max-width:1400px;margin:2rem auto;padding:0 1rem;}
+.controls{display:flex;flex-wrap:wrap;gap:0.8rem;margin-bottom:1.5rem;justify-content:center;}
+input[type="text"]{padding:0.8rem 1rem;border:2px solid #ddd;border-radius:8px;font-size:1.1rem;width:100%;max-width:400px;}
+select{padding:0.8rem 1rem;border:2px solid #ddd;border-radius:8px;font-size:1.1rem;}
+button{padding:0.8rem 1.5rem;border:none;border-radius:8px;font-weight:bold;cursor:pointer;display:inline-flex;align-items:center;gap:0.5rem;transition:0.3s;}
+.btn-add{background:var(--success);color:white;}
+.btn-refresh{background:var(--warning);color:white;}
+.btn-export{background:var(--primary-light);color:white;}
+.btn-print{background:#6b7280;color:white;}
+table{width:100%;border-collapse:collapse;background:white;border-radius:12px;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.1);}
+th,td{padding:1rem;text-align:center;border-bottom:1px solid #eee;}
+th{background:var(--primary);color:white;font-weight:700;}
+tr:hover{background:#f8fafc;}
+.rent{color:var(--success);font-weight:bold;}
+.arrears{color:var(--danger);font-weight:bold;}
+@media(max-width:768px){
+table,thead,tbody,th,td,tr{display:block;}
+thead tr{position:absolute;top:-9999px;left:-9999px;}
+tr{border:1px solid #ccc;margin-bottom:1rem;border-radius:10px;padding:1rem;}
+td{border:none;position:relative;padding-left:50%;text-align:right;}
+td:before{content:attr(data-label);position:absolute;left:1rem;width:45%;font-weight:bold;text-align:right;}
+}
+/* Modal */
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.7);align-items:center;justify-content:center;z-index:1000;}
+.modal-content{background:white;padding:2rem;border-radius:12px;width:90%;max-width:600px;}
+.close{float:left;font-size:2rem;cursor:pointer;}
+/* Loading */
+#loading{position:fixed;inset:0;background:rgba(30,58,138,0.95);color:white;display:flex;flex-direction:column;align-items:center;justify-content:center;font-size:1.5rem;z-index:9999;}
+.coin{font-size:5rem;animation:spin 2s linear infinite;}
+@keyframes spin{from{transform:rotate(0deg);}to{transform:rotate(360deg);}}
+/* تصفيات إحصائية */
+#filterStats{background:white;padding:1.5rem;margin-bottom:1.5rem;border-radius:12px;box-shadow:0 4px 15px rgba(0,0,0,0.1);}
+.stats-grid{display:flex;flex-wrap:wrap;gap:1rem;justify-content:center;font-weight:700;}
+.stat-box{padding:1rem 2rem;border-radius:10px;background:#eef2ff;}
+</style>
+</head>
+<body>
+
+<div id="loading"><i class="fas fa-coins coin"></i><div>جاري تحميل بيانات الوقف...</div></div>
+
+<header>
+<h1>وقف فاطمة هانم البقلية</h1>
+<p>نظام إدارة الإيجارات - الإصدار المالي 2025</p>
+</header>
+
+<div class="container">
+
+<!-- إحصائيات التصفية -->
+<div id="filterStats" style="display:none;">
+<div class="stats-grid">
+<div id="statCount" class="stat-box"></div>
+<div id="statNahya" class="stat-box"></div>
+<div id="statType" class="stat-box"></div>
+<div id="statHod" class="stat-box"></div>
+<div id="statRent" class="stat-box"></div>
+</div>
+</div>
+
+<!-- أدوات -->
+<div class="controls">
+<select id="filterNahya"><option value="">كل النواحي</option></select>
+<select id="filterType"><option value="">كل الأنواع</option></select>
+<select id="filterWaqf"><option value="">كل الأوقاف</option></select>
+<select id="filterHod"><option value="">كل الأحواض</option></select>
+<input type="text" id="search" placeholder="🔍 بحث ذكي في جميع الحقول..."/>
+<button class="btn-add" onclick="openModal()"><i class="fas fa-plus"></i> إضافة مستأجر</button>
+<button class="btn-refresh" onclick="loadFromGitHub(true)"><i class="fas fa-sync"></i> تحديث</button>
+<button class="btn-export" onclick="exportToExcel()"><i class="fas fa-file-excel"></i> تصدير</button>
+<button class="btn-print" onclick="window.print()"><i class="fas fa-print"></i> طباعة</button>
+</div>
+
+<!-- الجدول -->
+<table>
+<thead>
+<tr>
+<th>م</th><th>الناحية</th><th>النوع</th><th>الوقف</th><th>الصفحة</th>
+<th>الجريدة</th><th>الحوض</th><th>المستأجر</th><th>المساحة</th>
+<th class="rent">أجرة شهرية</th><th class="arrears">متأخرات</th>
+<th class="rent">أجرة سنوية</th><th>إجراءات</th>
+</tr>
+</thead>
+<tbody id="tableBody"></tbody>
+</table>
+
+</div>
+
+<!-- Modal -->
+<div class="modal" id="modal">
+<div class="modal-content">
+<span class="close" onclick="closeModal()">&times;</span>
+<h2 id="modalTitle">إضافة مستأجر</h2>
+<form id="dataForm">
+<input type="hidden" id="editIndex"/>
+<div class="form-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:0.8rem;">
+<input id="col1" placeholder="م" required>
+<input id="col2" placeholder="الناحية" required>
+<input id="col3" placeholder="النوع" required>
+<input id="col4" placeholder="الوقف" required>
+<input id="col5" placeholder="الصفحة">
+<input id="col6" placeholder="الجريدة">
+<input id="col7" placeholder="الحوض">
+<input id="col8" placeholder="اسم المستأجر" required>
+<input id="col9" placeholder="المساحة">
+<input type="number" id="col10" placeholder="الأجرة الشهرية" step="0.01" required>
+<input type="number" id="col11" placeholder="متأخرات" step="0.01" value="0">
+</div>
+<div style="text-align:center;margin-top:1rem;">
+<button style="background:var(--success);color:white;padding:1rem 2rem;"><i class="fas fa-save"></i> حفظ</button>
+</div>
+</form>
+</div>
+</div>
+
+<script>
+const CSV_URL="https://raw.githubusercontent.com/abukora/waqf-eskan/main/eskan.csv";
+let data=[],fuse;
+const COLUMNS=["م","الناحية","النوع","الوقف","الصفحة","الجريدة","الحوض","اسم المستأجر","المساحة","الأجرة الشهرية","متأخرات","الأجرة السنوية"];
+
+/* تحميل البيانات */
+async function loadFromGitHub(force=false){
+  const saved=localStorage.getItem("waqfData");
+  const savedTime=localStorage.getItem("waqfTime");
+  if(!force && saved && savedTime && Date.now()-savedTime<86400000){
+    data=JSON.parse(saved);
+    initApp();
+    document.getElementById("loading").style.display="none";
+    return;
+  }
+  try{
+    const res=await fetch(CSV_URL+"?t="+Date.now());
+    const text=await res.text();
+    Papa.parse(text,{complete:({data:rows})=>{
+      const remote=rows.slice(1).filter(r=>r[0]);
+      data=saved?mergeData(JSON.parse(saved),remote):remote;
+      saveData();
+      initApp();
+    }});
+  }catch{
+    if(saved){ data=JSON.parse(saved); initApp();}
+  }
+  document.getElementById("loading").style.display="none";
+}
+
+function mergeData(local,remote){
+  const map=new Map();
+  local.forEach(r=>map.set(r[0]+"|"+r[7],r));
+  remote.forEach(r=>{ const key=r[0]+"|"+r[7]; if(!map.has(key)) map.set(key,r);});
+  return [...map.values()];
+}
+function saveData(){ localStorage.setItem("waqfData",JSON.stringify(data)); localStorage.setItem("waqfTime",Date.now());}
+
+/* تشغيل التطبيق */
+function initApp(){
+  fuse = new Fuse(data, { keys: COLUMNS.map((_, i) => i.toString()), threshold: 0.3 });
+  fillFilters();
+  filterStats.style.display="none";
+  document.getElementById("tableBody").innerHTML="";
+}
+
+/* ملء خيارات التصفية */
+function fillFilters(){
+  const nahya=new Set(),type=new Set(),waqf=new Set(),hod=new Set();
+  data.forEach(r=>{if(r[1])nahya.add(r[1]);if(r[2])type.add(r[2]);if(r[3])waqf.add(r[3]);if(r[6])hod.add(r[6]);});
+  fillSelect(filterNahya,nahya); fillSelect(filterType,type); fillSelect(filterWaqf,waqf); fillSelect(filterHod,hod);
+}
+function fillSelect(el,set){ set.forEach(v=>{const opt=document.createElement("option");opt.value=v;opt.textContent=v;el.appendChild(opt);});}
+
+/* تطبيق التصفية */
+function applyFilters(){
+  let filtered=data;
+  if(filterNahya.value) filtered=filtered.filter(r=>r[1]===filterNahya.value);
+  if(filterType.value) filtered=filtered.filter(r=>r[2]===filterType.value);
+  if(filterWaqf.value) filtered=filtered.filter(r=>r[3]===filterWaqf.value);
+  if(filterHod.value) filtered=filtered.filter(r=>r[6]===filterHod.value);
+  renderTable(filtered); updateStats(filtered);
+}
+
+/* البحث الذكي */
+search.oninput=()=>{const t=search.value.trim(); if(!t){applyFilters();return;} const results=fuse.search(t).map(r=>r.item); renderTable(results); updateStats(results);};
+
+/* عرض الجدول */
+function renderTable(records){
+  const tbody=document.getElementById("tableBody"); tbody.innerHTML="";
+  records.forEach((r,idx)=>{
+    const tr=document.createElement("tr");
+    for(let i=0;i<11;i++){
+      const td=document.createElement("td"); td.textContent=r[i]||""; td.dataset.label=COLUMNS[i];
+      if(i===9)td.className="rent"; if(i===10)td.className="arrears"; tr.appendChild(td);
+    }
+    const annual=((parseFloat(r[9])||0)*12).toFixed(2);
+    const tdAnnual=document.createElement("td"); tdAnnual.textContent=annual; tdAnnual.className="rent"; tr.appendChild(tdAnnual);
+    const tdAct=document.createElement("td"); tdAct.innerHTML=`<button onclick="editRow(${idx})" style="background:#3b82f6;color:white;"><i class="fas fa-edit"></i></button> <button onclick="deleteRow(${idx})" style="background:#dc2626;color:white;"><i class="fas fa-trash"></i></button>`; tr.appendChild(tdAct);
+    tbody.appendChild(tr);
+  });
+}
+
+/* إحصائيات التصفية */
+function updateStats(records){
+  if(!records.length){ filterStats.style.display="none"; return;}
+  filterStats.style.display="block";
+  const setNahya=new Set(), setType=new Set(), setHod=new Set(); let total=0;
+  records.forEach(r=>{if(r[1])setNahya.add(r[1]);if(r[2])setType.add(r[2]);if(r[6])setHod.add(r[6]);total+=(parseFloat(r[9])||0)*12;});
+  statCount.textContent="عدد المستأجرين: "+records.length;
+  statNahya.textContent="عدد النواحي: "+setNahya.size;
+  statType.textContent="عدد الأنواع: "+setType.size;
+  statHod.textContent="عدد الأحواض: "+setHod.size;
+  statRent.textContent="إجمالي الإيجار السنوي: "+total.toLocaleString("ar-EG")+" جنيه";
+}
+
+/* مودال */
+function openModal(){ modal.style.display="flex"; modalTitle.textContent="إضافة مستأجر"; dataForm.reset(); editIndex.value="";}
+function closeModal(){ modal.style.display="none";}
+dataForm.onsubmit=e=>{e.preventDefault(); const row=[]; for(let i=1;i<=11;i++) row.push(document.getElementById("col"+i).value); row[11]=((parseFloat(row[9])||0)*12).toFixed(2); if(editIndex.value==="") data.push(row); else data[editIndex.value]=row; saveData(); applyFilters(); closeModal();}
+function editRow(i){ const r=data[i]; COLUMNS.forEach((_,idx)=>{const f=document.getElementById("col"+(idx+1)); if(f) f.value=r[idx]||"";}); editIndex.value=i; modalTitle.textContent="تعديل مستأجر"; openModal();}
+function deleteRow(i){if(confirm("هل تريد الحذف؟")){ data.splice(i,1); saveData(); applyFilters();}}
+
+/* تصدير Excel */
+function exportToExcel(){
+  const exportData=data.map(r=>{ const obj={}; COLUMNS.forEach((c,i)=>obj[c]=r[i]||""); obj["الأجرة السنوية"]=((parseFloat(r[9])||0)*12).toFixed(2); return obj;});
+  const ws=XLSX.utils.json_to_sheet(exportData); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"الإيجارات"); XLSX.writeFile(wb,"إيجارات_الوقف.xlsx");
+}
+
+/* أحداث */
+filterNahya.onchange=filterType.onchange=filterWaqf.onchange=filterHod.onchange=applyFilters;
+window.onclick=e=>{if(e.target===modal) closeModal();};
+loadFromGitHub();
+</script>
+
+</body>
+</html>
